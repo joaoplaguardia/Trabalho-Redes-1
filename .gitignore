@@ -6,5 +6,3 @@ tcp/cliente
 tcp/comparar.c
 tcp/comparar
 tcp/resultados-tcp.txt
-
-tcp/Makefile
