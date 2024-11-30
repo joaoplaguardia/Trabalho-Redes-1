@@ -1,0 +1,16 @@
+0.05 segundos
+231673184.42 bytes/segundo
+0.041 segundos
+255644245.07 b/s
+0.035 segundos
+299242601.52 b/s
+0.037 segundos
+285140588.46 b/s
+0.041 segundos
+256777353.32 b/s
+0.038 segundos
+273451207.43 b/s
+0.050 segundos
+209217262.91 b/s
+0.047 segundos
+224601807.82 b/s
