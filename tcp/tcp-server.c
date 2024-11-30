@@ -75,7 +75,6 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // Perguntar se o cliente quer fazer o download
     char response;
     if (recv(client_socket, &response, 1, 0) < 0) {
         perror("Erro ao receber a resposta do cliente");
@@ -84,7 +83,6 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // Se a resposta não for 's', fecha a conexão
     if (response != 's') {
         printf("Cliente não quis fazer o download. Conexão fechada.\n");
         close(client_socket);
@@ -104,7 +102,6 @@ int main() {
     calculate_hash(file, hash_out);
     fclose(file);
 
-    // Enviar o hash para o cliente
     if (send(client_socket, hash_out, EVP_MD_size(EVP_sha256()), 0) < 0) {
         perror("Erro ao enviar hash");
         close(client_socket);
@@ -120,7 +117,6 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // Enviar o arquivo em blocos
     size_t bytesRead;
     while ((bytesRead = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
         if (send(client_socket, buffer, bytesRead, 0) < 0) {
@@ -132,7 +128,7 @@ int main() {
         }
     }
 
-	printf("Arquivo enviado. Fechando conexão...\n");
+    printf("Arquivo enviado. Fechando conexão...\n");
 
     fclose(file);
     close(client_socket);

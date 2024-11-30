@@ -82,24 +82,21 @@ int main() {
 
     printf("Conectado ao servidor.\n");
 
-    // Pergunta ao cliente se ele quer fazer o download
     char response;
     printf("Você deseja fazer o download do arquivo? (s/n): ");
-    scanf(" %c", &response);  // O espaço antes de %c é para capturar o '\n' deixado pelo enter
+    scanf(" %c", &response);
     if (send(my_socket, &response, 1, 0) < 0) {
         perror("Erro ao enviar resposta ao servidor");
         close(my_socket);
         return -1;
     }
 
-    // Se a resposta não for 's', encerra a conexão
     if (response != 's') {
         printf("Download não realizado. Conexão encerrada.\n");
         close(my_socket);
         return 0;
     }
 
-    // Recebe o hash do servidor
     unsigned char server_hash[EVP_MAX_MD_SIZE];
     ssize_t hashBytesReceived = recv(my_socket, server_hash, EVP_MD_size(EVP_sha256()), MSG_WAITALL);
     if (hashBytesReceived < 0) {
@@ -108,7 +105,6 @@ int main() {
         return -1;
     }
 
-    // Abre o arquivo para salvar os dados recebidos
     file = fopen(output_filename, "wb");
     if (file == NULL) {
         perror("Erro ao abrir o arquivo para escrita");
@@ -121,7 +117,6 @@ int main() {
 
     start = clock();
 
-    // Recebe o arquivo em blocos
     while ((fileBytesReceived = recv(my_socket, buffer, BUFFER_SIZE, MSG_WAITALL)) > 0) {
         if (fwrite(buffer, 1, fileBytesReceived, file) != fileBytesReceived) {
             perror("Erro ao escrever no arquivo");
@@ -138,16 +133,13 @@ int main() {
     printf("Arquivo recebido.\n");
     fclose(file);
 
-    // Calcula e imprime a taxa de download
     download_rate = total_bytes_received / total_time;
     printf("Tempo de download: %.3f segundos\n", total_time);
     printf("Taxa de download: %.2f b/s\n", download_rate);
 
-    // Calcula o hash do arquivo recebido
     unsigned char client_hash[EVP_MAX_MD_SIZE];
     calculate_hash(output_filename, client_hash);
 
-    // Verifica se o hash do cliente corresponde ao hash do servidor
     int match = 1;
     printf("Hash do servidor: ");
     for (int i = 0; i < EVP_MD_size(EVP_sha256()); i++) {
@@ -176,7 +168,6 @@ int main() {
 
     close(my_socket);
 
-    // Grava os resultados de download em um arquivo de log
     FILE *result_file = fopen("resultados-tcp.txt", "a");
     if (result_file == NULL) {
         perror("Erro ao abrir o arquivo de resultados");
