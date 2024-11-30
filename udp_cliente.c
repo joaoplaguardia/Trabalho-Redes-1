@@ -15,7 +15,7 @@ int main() {
     struct sockaddr_in server_addr;
     socklen_t server_len;
     char buffer[BUFFER_SIZE];
-    int packets_rec = 0;
+    int packets_rec = 0, packets_lost = 0;
     size_t total_bytes_received = 0;
     FILE *file;
 
@@ -35,12 +35,19 @@ int main() {
 
     while (1) {
         ssize_t bytes_received = recvfrom(sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&server_addr, &server_len);
-        if (bytes_received > 0 && strncmp(buffer, "FIM", 3) == 0) {
-            printf("Arquivo transferido com sucesso.\n");
-            break;
+        if (bytes_received > 0) {
+            if (strncmp(buffer, "FIM", 3) == 0) {
+                printf("Arquivo transferido com sucesso.\n");
+                break;
+            }
+            fwrite(buffer, 1, bytes_received, file);
+            packets_rec++;
+            total_bytes_received += bytes_received;
+            printf("Pacote recebido com %ld bytes.\n", bytes_received);
+        } else {
+            packets_lost++;
         }
-        fwrite(buffer, 1, bytes_received, file);
-        packets_rec++; 
+
         if (bytes_received < BUFFER_SIZE) {
             break;
         }
@@ -48,9 +55,17 @@ int main() {
 
     clock_t end_time = clock();
     double total_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;
-    double download_speed = total_bytes_received / total_time;
 
-    printf("Arquivo recebido com sucesso!\n");
+    if (total_time > 0) {
+        double download_speed = total_bytes_received / total_time;
+        printf("Arquivo recebido com sucesso!\n");
+        printf("Pacotes recebidos: %d\n", packets_rec);
+        printf("Pacotes perdidos: %d\n", packets_lost);
+        printf("Taxa de download: %.2f KB/s\n", download_speed / 1024);
+    } else {
+        printf("Tempo de download inválido.\n");
+    }
+
     fclose(file);
     close(sockfd);
     return 0;

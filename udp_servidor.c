@@ -26,7 +26,10 @@ int main() {
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(PORT);
 
-    bind(sockfd, (const struct sockaddr *)&server_addr, sizeof(server_addr));
+    if (bind(sockfd, (const struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Erro ao bindar o socket");
+        exit(EXIT_FAILURE);
+    }
 
     printf("Servidor aguardando na porta %d...\n", PORT);
 
@@ -39,18 +42,24 @@ int main() {
 
     file = fopen(FILE_NAME, "rb");
 
+    if (file == NULL) {
+        perror("Erro ao abrir arquivo");
+        exit(EXIT_FAILURE);
+    }
+
     while (!feof(file)) {
         size_t bytes_read = fread(buffer, 1, BUFFER_SIZE, file);
         if (bytes_read > 0) {
             sendto(sockfd, buffer, bytes_read, 0, (struct sockaddr *)&client_addr, client_len);
             packets_sent++;
+            printf("Enviando pacote de %ld bytes.\n", bytes_read);
         }
     }
 
     const char *end_message = "FIM";
     sendto(sockfd, end_message, strlen(end_message), 0, (const struct sockaddr *)&client_addr, client_len);
 
-    printf("Arquivo enviado com sucesso!\n");
+    printf("Arquivo enviado com sucesso! Total de pacotes enviados: %d\n", packets_sent);
     fclose(file);
     close(sockfd);
     return 0;

@@ -177,6 +177,6 @@ int main() {
     fprintf(result_file, "%.3f segundos\n", total_time);
     fprintf(result_file, "%.2f b/s\n", download_rate);
     fclose(result_file);
-
+    
     return 0;
 }
