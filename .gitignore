@@ -1,6 +1,5 @@
 tcp/arquivo_recebido.bin
 tcp/gera
-tcp/gera-arquivo.c
 tcp/servidor
 tcp/cliente
 tcp/comparar.c
