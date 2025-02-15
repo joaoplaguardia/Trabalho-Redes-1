@@ -23,17 +23,22 @@ int main(int argc, char *argv[]) {
     }
 
     char *file_name = argv[1];
-    int timeout_sec = atoi(argv[2]);
+    double timeout_val = atof(argv[2]);  // Converte para double
     int port = atoi(argv[3]);
 
     int sockfd;
     struct sockaddr_in server_addr;
-    struct timeval timeout = {timeout_sec, 0};
+    // Converte timeout_val para segundos e microsegundos:
+    struct timeval timeout;
+    timeout.tv_sec = (int)timeout_val;
+    timeout.tv_usec = (int)((timeout_val - timeout.tv_sec) * 1e6);
+
     socklen_t server_len = sizeof(server_addr);
     Packet packet;
     char ack[BUFFER_SIZE];
     uint32_t packet_num = 0;
     int timeout_count = 0;  // Contador de timeouts consecutivos
+    int retransmissions = 0;  // Contador de retransmissões
 
     FILE *file = fopen(file_name, "rb");
     if (!file) {
@@ -74,15 +79,31 @@ int main(int argc, char *argv[]) {
         if (ack_size < 0) {
             timeout_count++;
             printf("Timeout aguardando ACK para pacote #%u. Reenviando...\n", packet_num);
+            retransmissions++;
             if (timeout_count >= N_DESISTENCIA) {
                 printf("Número máximo de timeouts consecutivos atingido. Desistindo da transmissão.\n");
                 break;
             }
         } else {
             ack[ack_size] = '\0';
-            printf("Recebido ACK: %s\n", ack);
-            if (strncmp(ack, "ACK", 3) == 0) {
-                timeout_count = 0;  // Resetar o contador de timeouts
+            int received_ack = -1;
+            if (sscanf(ack, "ACK-%d", &received_ack) != 1) {
+                printf("Formato de ACK inválido: %s\n", ack);
+                timeout_count++;
+                retransmissions++;
+                continue;
+            }
+
+            printf("Esperado: #%u, Recebido ACK: #%d\n", packet_num, received_ack);
+
+            if (received_ack != packet_num) {
+                printf("ACK recebido contém número de sequência incorreto! Esperado: #%u, Recebido: #%d\n", packet_num, received_ack);
+                timeout_count++;
+                retransmissions++;
+                printf("Reenviando pacote #%u...\n", packet_num);
+            } else {
+                printf("Recebido ACK: #%d\n", received_ack);
+                timeout_count = 0;
                 packet_num++;
             }
         }
@@ -96,7 +117,7 @@ int main(int argc, char *argv[]) {
 
     fclose(file);
     close(sockfd);
-    printf("Transferência concluída!\n");
+    printf("Transferência concluída! Número total de retransmissões: %d\n", retransmissions);
 
     return 0;
 }
