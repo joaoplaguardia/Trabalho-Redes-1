@@ -28,7 +28,6 @@ int main(int argc, char *argv[]) {
 
     int sockfd;
     struct sockaddr_in server_addr;
-    // Converte timeout_val para segundos e microsegundos:
     struct timeval timeout;
     timeout.tv_sec = (int)timeout_val;
     timeout.tv_usec = (int)((timeout_val - timeout.tv_sec) * 1e6);
@@ -37,8 +36,11 @@ int main(int argc, char *argv[]) {
     Packet packet;
     char ack[BUFFER_SIZE];
     uint32_t packet_num = 0;
-    int timeout_count = 0;  // Contador de timeouts consecutivos
-    int retransmissions = 0;  // Contador de retransmissões
+    int total_retransmissions = 0;  // Contador total de retransmissões
+
+    // Variáveis para medir o tempo de execução (a partir do primeiro ACK recebido)
+    struct timeval start_time, end_time;
+    int timing_started = 0;
 
     FILE *file = fopen(file_name, "rb");
     if (!file) {
@@ -58,66 +60,89 @@ int main(int argc, char *argv[]) {
     server_addr.sin_port = htons(port);
     inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);
 
+    // Laço principal: para cada bloco lido do arquivo
     while (1) {
         size_t bytes_read = fread(packet.payload, 1, BUFFER_SIZE, file);
-        if (bytes_read == 0) {
+        if (bytes_read == 0) { // Fim do arquivo
             break;
         }
 
         packet.seq_num = htonl(packet_num);
         packet.data_size = htonl(bytes_read);
 
-        if (sendto(sockfd, &packet, sizeof(packet.seq_num) + sizeof(packet.data_size) + bytes_read, 0,
-                   (struct sockaddr *)&server_addr, server_len) < 0) {
-            perror("Erro ao enviar pacote");
-            exit(EXIT_FAILURE);
-        }
+        int acked = 0;
+        int timeout_count = 0;  // Para este pacote
 
-        printf("Enviado pacote #%u (%zu bytes)\n", packet_num, bytes_read);
-
-        ssize_t ack_size = recvfrom(sockfd, ack, sizeof(ack), 0, (struct sockaddr *)&server_addr, &server_len);
-        if (ack_size < 0) {
-            timeout_count++;
-            printf("Timeout aguardando ACK para pacote #%u. Reenviando...\n", packet_num);
-            retransmissions++;
-            if (timeout_count >= N_DESISTENCIA) {
-                printf("Número máximo de timeouts consecutivos atingido. Desistindo da transmissão.\n");
-                break;
+        // Laço de retransmissão: tenta enviar o mesmo pacote até ser ACKado
+        while (!acked) {
+            if (sendto(sockfd, &packet, sizeof(packet.seq_num) + sizeof(packet.data_size) + bytes_read, 0,
+                       (struct sockaddr *)&server_addr, server_len) < 0) {
+                perror("Erro ao enviar pacote");
+                exit(EXIT_FAILURE);
             }
-        } else {
-            ack[ack_size] = '\0';
-            int received_ack = -1;
-            if (sscanf(ack, "ACK-%d", &received_ack) != 1) {
-                printf("Formato de ACK inválido: %s\n", ack);
-                timeout_count++;
-                retransmissions++;
-                continue;
-            }
+            printf("Enviado pacote #%u (%zu bytes)\n", packet_num, bytes_read);
 
-            printf("Esperado: #%u, Recebido ACK: #%d\n", packet_num, received_ack);
-
-            if (received_ack != packet_num) {
-                printf("ACK recebido contém número de sequência incorreto! Esperado: #%u, Recebido: #%d\n", packet_num, received_ack);
+            ssize_t ack_size = recvfrom(sockfd, ack, sizeof(ack), 0, (struct sockaddr *)&server_addr, &server_len);
+            if (ack_size < 0) {
                 timeout_count++;
-                retransmissions++;
-                printf("Reenviando pacote #%u...\n", packet_num);
+                total_retransmissions++;
+                printf("Timeout aguardando ACK para pacote #%u. (Timeouts consecutivos: %d)\n", packet_num, timeout_count);
+                if (timeout_count >= N_DESISTENCIA) {
+                    printf("Número máximo de timeouts consecutivos atingido para o pacote #%u. Desistindo da transmissão.\n", packet_num);
+                    goto fim;
+                }
+                // Tenta novamente enviar o mesmo pacote (sem avançar o arquivo)
             } else {
-                printf("Recebido ACK: #%d\n", received_ack);
-                timeout_count = 0;
-                packet_num++;
+                ack[ack_size] = '\0';
+                int received_ack = -1;
+                if (sscanf(ack, "ACK-%d", &received_ack) != 1) {
+                    printf("Formato de ACK inválido: %s\n", ack);
+                    timeout_count++;
+                    total_retransmissions++;
+                    continue; // Tenta novamente
+                }
+                // Inicia a medição do tempo a partir do primeiro ACK recebido
+                if (!timing_started) {
+                    gettimeofday(&start_time, NULL);
+                    timing_started = 1;
+                }
+                printf("Esperado: #%u, Recebido ACK: #%d\n", packet_num, received_ack);
+                if (received_ack != packet_num) {
+                    printf("ACK incorreto para pacote #%u! (Recebido: #%d)\n", packet_num, received_ack);
+                    timeout_count++;
+                    total_retransmissions++;
+                    // Tenta novamente enviar o mesmo pacote
+                } else {
+                    printf("Recebido ACK correto: #%d\n", received_ack);
+                    acked = 1;  // Pacote ACKado corretamente
+                }
             }
-        }
-    }
+        } // Fim do laço de retransmissão
 
+        packet_num++;  // Avança para o próximo pacote
+    } // Fim do laço principal
+
+fim:
+    // Envia pacote de término ("FIM")
     snprintf(packet.payload, sizeof(packet.payload), "FIM");
     packet.seq_num = htonl(packet_num);
     packet.data_size = 0;
     sendto(sockfd, &packet, sizeof(packet), 0, (struct sockaddr *)&server_addr, server_len);
     printf("Enviado pacote de término.\n");
 
+    // Finaliza a medição do tempo, se iniciado
+    if (timing_started) {
+        gettimeofday(&end_time, NULL);
+        double elapsed = (end_time.tv_sec - start_time.tv_sec) +
+                         (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
+        printf("Tempo total de transmissão: %.6f segundos.\n", elapsed);
+    } else {
+        printf("Nenhum ACK foi recebido. Tempo de transmissão não medido.\n");
+    }
+
     fclose(file);
     close(sockfd);
-    printf("Transferência concluída! Número total de retransmissões: %d\n", retransmissions);
+    printf("Transferência concluída! Número total de retransmissões: %d\n", total_retransmissions);
 
     return 0;
 }
